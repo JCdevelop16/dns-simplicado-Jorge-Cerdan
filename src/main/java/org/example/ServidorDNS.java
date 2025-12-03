@@ -46,7 +46,45 @@ public class ServidorDNS {
             BufferedReader entrada = new BufferedReader(new InputStreamReader(cliente.getInputStream()));
             PrintWriter salida = new PrintWriter(cliente.getOutputStream(), true);
 
+            String linea;
 
+            while((linea = entrada.readLine()) != null){
+                try{
+                    if(linea.equalsIgnoreCase("EXIT")){
+                        salida.println("EXIT");
+                        break;
+                    }
+                    String [] partes = linea.split(" ");
+                    if(partes.length != 3){
+                        salida.println("400 Bad Request");
+                        continue;
+                    }
+
+                    String tipo = partes[1];
+                    String dominio = partes[2];
+
+                    if(!diccionario.containsKey(dominio)){
+                        salida.println("400 Bad Request");
+                    }
+
+                    boolean encontrado = false;
+
+                    for(Registro r : diccionario.get(dominio)){
+                        if(r.tipo.equalsIgnoreCase(tipo)){
+                            salida.println("200 " + r.valor);
+                            encontrado = true;
+                            break;
+                        }
+                    }
+
+                    if(!encontrado){
+                        salida.println("404 Not Found");
+                    }
+
+                } catch (Exception e) {
+                    System.out.println("500 Server Error");
+                }
+            }
 
             // Cierre
             System.out.println("Conexión cerrada con el cliente.");
