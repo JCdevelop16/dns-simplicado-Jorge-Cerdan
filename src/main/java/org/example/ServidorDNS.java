@@ -50,15 +50,17 @@ public class ServidorDNS {
 
             while((linea = entrada.readLine()) != null){
                 try{
-                    if(linea.equalsIgnoreCase("EXIT")){
+                    if(linea.equals("EXIT")){
                         salida.println("EXIT");
                         break;
                     }
-                    if(linea.equalsIgnoreCase("LIST")){
+                    if(linea.equals("LIST")){
                         salida.println("150 Inicio Listado");
+                        salida.println("===========================================");
                         diccionario.forEach((clave, registros) -> {
                             registros.forEach(registro -> salida.println(registro));
                         });
+                        salida.println("===========================================");
                         salida.println("226 Fin Listado");
                         continue;
                     }
@@ -73,17 +75,16 @@ public class ServidorDNS {
                     String dominio = partes[2];
 
                     if(!diccionario.containsKey(dominio)){
-                        salida.println("400 Bad Request");
+                        salida.println("404 Not Found");
                         continue;
                     }
 
                     boolean encontrado = false;
 
                     for(Registro r : diccionario.get(dominio)){
-                        if(r.tipo.equalsIgnoreCase(tipo)){
+                        if(r.tipo.equals(tipo)){
                             salida.println("200 " + r.valor);
                             encontrado = true;
-                            break;
                         }
                     }
 
@@ -92,7 +93,7 @@ public class ServidorDNS {
                     }
 
                 } catch (Exception e) {
-                    System.out.println("500 Server Error");
+                    salida.println("500 Server Error");
                 }
             }
 
