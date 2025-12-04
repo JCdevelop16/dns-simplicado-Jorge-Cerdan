@@ -54,8 +54,17 @@ public class ServidorDNS {
                         salida.println("EXIT");
                         break;
                     }
+                    if(linea.equalsIgnoreCase("LIST")){
+                        salida.println("150 Inicio Listado");
+                        diccionario.forEach((clave, registros) -> {
+                            registros.forEach(registro -> salida.println(registro));
+                        });
+                        salida.println("226 Fin Listado");
+                        continue;
+                    }
+
                     String [] partes = linea.split(" ");
-                    if(partes.length != 3){
+                    if(partes.length != 3 || !partes[0].equals("LOOKUP")){
                         salida.println("400 Bad Request");
                         continue;
                     }
@@ -65,6 +74,7 @@ public class ServidorDNS {
 
                     if(!diccionario.containsKey(dominio)){
                         salida.println("400 Bad Request");
+                        continue;
                     }
 
                     boolean encontrado = false;
