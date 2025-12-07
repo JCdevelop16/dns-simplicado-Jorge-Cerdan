@@ -65,6 +65,37 @@ public class ServidorDNS {
                         continue;
                     }
 
+                    if(linea.startsWith("REGISTER")){
+                        String[]partes = linea.split(" ");
+                        if (partes.length != 4) {
+                            salida.println("400 Bad Request");
+                            continue;
+                        }
+
+                        String dominio = partes[1];
+                        String tipo = partes[2];
+                        String valor =  partes[3];
+
+                        Registro registro = new Registro(dominio, tipo, valor);
+
+                        diccionario.putIfAbsent(dominio, new ArrayList<>());
+                        diccionario.get(dominio).add(registro);
+
+                        try(FileWriter fr = new FileWriter("src/direcciones.txt");
+                        PrintWriter pw = new PrintWriter(fr)){
+
+                            pw.println(dominio + " " + tipo + " " + valor);
+
+                        } catch (IOException e) {
+                            salida.println("500 Server Error");
+                            continue;
+                        }
+
+                        salida.println("200 Record added");
+                        continue;
+
+                    }
+
                     String [] partes = linea.split(" ");
                     if(partes.length != 3 || !partes[0].equals("LOOKUP")){
                         salida.println("400 Bad Request");
