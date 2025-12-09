@@ -3,16 +3,18 @@ package org.example;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
+import java.util.*;
 
 public class ServidorDNS {
 
     static HashMap<String, List<Registro>> listaMap;
+    private static final int MAX_CLIENTS = 5;
+
+    private static final List<DataOutputStream> clients =
+            Collections.synchronizedList(new ArrayList<>());
 
     static void main() throws IOException {
+
 
         HashMap<String, List<Registro>> diccionario = new HashMap<String, List<Registro>>();
 
@@ -38,102 +40,120 @@ public class ServidorDNS {
 
 
         int puerto = 5000;
-        try(ServerSocket servidor = new ServerSocket(puerto)) {
-            Socket cliente = servidor.accept();
-            System.out.println("Cliente conectado desde: " + cliente.getInetAddress().getHostAddress());
+        try (ServerSocket servidor = new ServerSocket(puerto)) {
 
-            // Flujos de entrada/salida
-            BufferedReader entrada = new BufferedReader(new InputStreamReader(cliente.getInputStream()));
-            PrintWriter salida = new PrintWriter(cliente.getOutputStream(), true);
+            System.out.println("Servidor DNS esperando clientes...");
 
-            String linea;
+            List<Socket> clientesActivos = Collections.synchronizedList(new ArrayList<>());
 
-            while((linea = entrada.readLine()) != null){
-                try{
-                    if(linea.equals("EXIT")){
-                        salida.println("EXIT");
-                        break;
-                    }
-                    if(linea.equals("LIST")){
-                        salida.println("150 Inicio Listado");
-                        salida.println("===========================================");
-                        diccionario.forEach((clave, registros) -> {
-                            registros.forEach(registro -> salida.println(registro));
-                        });
-                        salida.println("===========================================");
-                        salida.println("226 Fin Listado");
-                        continue;
-                    }
+            while (true) {
 
-                    if(linea.startsWith("REGISTER")){
-                        String[]partes = linea.split(" ");
-                        if (partes.length != 4) {
-                            salida.println("400 Bad Request");
-                            continue;
+                if (clientesActivos.size() < MAX_CLIENTS) {
+
+                    Socket cliente = servidor.accept();
+                    clientesActivos.add(cliente);
+
+                    System.out.println("Cliente conectado desde: " + cliente.getInetAddress());
+
+                    new Thread(() -> {
+
+                        try {
+                            BufferedReader entrada = new BufferedReader(new InputStreamReader(cliente.getInputStream()));
+                            PrintWriter salida = new PrintWriter(cliente.getOutputStream(), true);
+
+                            String linea;
+
+                            while ((linea = entrada.readLine()) != null) {
+
+                                if (linea.equals("EXIT")) {
+                                    salida.println("EXIT");
+                                    break;
+                                }
+
+                                if (linea.equals("LIST")) {
+                                    salida.println("150 Inicio Listado");
+                                    salida.println("===========================================");
+                                    diccionario.forEach((clave, registros) -> {
+                                        registros.forEach(registro -> salida.println(registro));
+                                    });
+                                    salida.println("===========================================");
+                                    salida.println("226 Fin Listado");
+                                    continue;
+                                }
+
+                                if (linea.startsWith("REGISTER")) {
+                                    String[] partes = linea.split(" ");
+                                    if (partes.length != 4) {
+                                        salida.println("400 Bad Request");
+                                        continue;
+                                    }
+
+                                    String dominio = partes[1];
+                                    String tipo = partes[2];
+                                    String valor = partes[3];
+
+                                    Registro registro = new Registro(dominio, tipo, valor);
+                                    diccionario.putIfAbsent(dominio, new ArrayList<>());
+                                    diccionario.get(dominio).add(registro);
+
+                                    try (FileWriter fr = new FileWriter("src/direcciones.txt", true);
+                                         PrintWriter pw = new PrintWriter(fr)) {
+                                        pw.println(dominio + " " + tipo + " " + valor);
+                                    } catch (IOException e) {
+                                        salida.println("500 Server Error");
+                                        continue;
+                                    }
+
+                                    salida.println("200 Record added");
+                                    continue;
+                                }
+
+                                String[] partes = linea.split(" ");
+                                if (partes.length != 3 || !partes[0].equals("LOOKUP")) {
+                                    salida.println("400 Bad Request");
+                                    continue;
+                                }
+
+                                String tipo = partes[1];
+                                String dominio = partes[2];
+
+                                if (!diccionario.containsKey(dominio)) {
+                                    salida.println("404 Not Found");
+                                    continue;
+                                }
+
+                                boolean encontrado = false;
+
+                                for (Registro r : diccionario.get(dominio)) {
+                                    if (r.tipo.equals(tipo)) {
+                                        salida.println("200 " + r.valor);
+                                        encontrado = true;
+                                    }
+                                }
+
+                                if (!encontrado) {
+                                    salida.println("404 Not Found");
+                                }
+                            }
+
+                            cliente.close();
+                            System.out.println("Cliente desconectado");
+
+                        } catch (Exception e) {
+                            System.out.println("Error: " + e.getMessage());
+                        } finally {
+                            clientesActivos.remove(cliente);
                         }
 
-                        String dominio = partes[1];
-                        String tipo = partes[2];
-                        String valor =  partes[3];
+                    }).start();
 
-                        Registro registro = new Registro(dominio, tipo, valor);
-
-                        diccionario.putIfAbsent(dominio, new ArrayList<>());
-                        diccionario.get(dominio).add(registro);
-
-                        try(FileWriter fr = new FileWriter("src/direcciones.txt");
-                        PrintWriter pw = new PrintWriter(fr)){
-
-                            pw.println(dominio + " " + tipo + " " + valor);
-
-                        } catch (IOException e) {
-                            salida.println("500 Server Error");
-                            continue;
-                        }
-
-                        salida.println("200 Record added");
-                        continue;
-
-                    }
-
-                    String [] partes = linea.split(" ");
-                    if(partes.length != 3 || !partes[0].equals("LOOKUP")){
-                        salida.println("400 Bad Request");
-                        continue;
-                    }
-
-                    String tipo = partes[1];
-                    String dominio = partes[2];
-
-                    if(!diccionario.containsKey(dominio)){
-                        salida.println("404 Not Found");
-                        continue;
-                    }
-
-                    boolean encontrado = false;
-
-                    for(Registro r : diccionario.get(dominio)){
-                        if(r.tipo.equals(tipo)){
-                            salida.println("200 " + r.valor);
-                            encontrado = true;
-                        }
-                    }
-
-                    if(!encontrado){
-                        salida.println("404 Not Found");
-                    }
-
-                } catch (Exception e) {
-                    salida.println("500 Server Error");
+                } else {
+                    System.out.println("Máximo de 5 clientes alcanzado");
+                    try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
                 }
             }
-
-            // Cierre
-            System.out.println("Conexión cerrada con el cliente.");
-            cliente.close();
-            System.exit(0);
-
         }
+
 
     }
 }
